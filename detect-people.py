@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # 🔗 Discord webhook
-WEBHOOK_URL = "https://discord.com/api/webhooks/your_webhook_here"
+WEBHOOK_URL = "https://discord.com/api/webhooks/1395241478153965729/kRaQfdd6aWHKzWZxGpsS0JCfi0GNUQ606VIIyx5bcM2jbVncnFnq-v23njqsaMxe3Owu"
 
 # 📦 Load YOLO model
 model = YOLO("yolov8n.pt")  # Nano version
