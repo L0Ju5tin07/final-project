@@ -4,25 +4,26 @@ import requests
 import time
 from datetime import datetime
 
-# 🔗 Your Discord Webhook URL
-WEBHOOK_URL = "https://discord.com/api/webhooks/1395241478153965729/kRaQfdd6aWHKzWZxGpsS0JCfi0GNUQ606VIIyx5bcM2jbVncnFnq-v23njqsaMxe3Owu"
+# 🔗 Discord webhook
+WEBHOOK_URL = "https://discord.com/api/webhooks/your_webhook_here"
 
-# 📦 Load YOLOv8 model
-model = YOLO("yolov8n.pt")  # nano version (lightweight and fast)
+# 📦 Load YOLO model
+model = YOLO("yolov8n.pt")  # Nano version
 
-# 🚀 Send message to Discord
-def send_discord_message(message):
-    payload = {
-        "content": message,
-        "username": "Jetson Person Detector"
-    }
-    response = requests.post(WEBHOOK_URL, json=payload)
-    if response.status_code == 204:
-        print("✅ Discord notified")
+# 🚀 Send message + image to Discord
+def send_discord_message_with_image(message, image_path):
+    with open(image_path, "rb") as f:
+        files = {"file": f}
+        data = {
+            "content": message,
+            "username": "Jetson Person Detector"
+        }
+        response = requests.post(WEBHOOK_URL, data=data, files=files)
+    if response.status_code in (200, 204):
+        print("✅ Discord notified with image")
     else:
-        print(f"❌ Failed to send: {response.status_code}, {response.text}")
+        print(f"❌ Error sending to Discord: {response.status_code}, {response.text}")
 
-# 🎥 Start video capture
 def main():
     cap = cv2.VideoCapture(0)
     last_sent = 0
@@ -43,18 +44,19 @@ def main():
             label = results.names[int(cls)]
             if label == "person":
                 now = time.time()
-                if now - last_sent > 10:  # send ping at most once every 10 seconds
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    send_discord_message(f"👤 Person detected at {timestamp}")
+                if now - last_sent > 10:  # Rate limit
+                    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                    image_path = f"person_{timestamp}.jpg"
+                    cv2.imwrite(image_path, frame)
+
+                    message = f"👤 Person detected at {timestamp}"
+                    send_discord_message_with_image(message, image_path)
+
                     last_sent = now
 
-        # Optional: Show live feed
-        cv2.imshow("Live Feed - Press Q to Quit", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+        time.sleep(0.01)
 
     cap.release()
-    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
