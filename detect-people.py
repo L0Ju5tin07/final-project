@@ -107,6 +107,8 @@ def main():
                 owl_text_encodings=owl_encodings
             )
 
+            print(detections)
+
             # Filter for persons
             persons = [d for d in detections if d.get('label', '').lower() == 'person']
             if persons and (time.time() - last_notification) > args.notify_interval:
