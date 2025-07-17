@@ -14,14 +14,12 @@ from nanoowl.tree_predictor import TreePredictor
 from nanoowl.owl_predictor import OwlPredictor
 from nanoowl.tree_drawing import draw_tree_output
 
-
 def cv2_to_pil(image):
     """
     Convert an OpenCV BGR image to a PIL Image in RGB format.
     """
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     return Image.fromarray(rgb)
-
 
 def notify_discord(webhook_url: str, image_bytes: bytes):
     """
@@ -35,7 +33,6 @@ def notify_discord(webhook_url: str, image_bytes: bytes):
         logging.info("Discord notification sent successfully.")
     except Exception as e:
         logging.error(f"Failed to send Discord notification: {e}")
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -98,22 +95,21 @@ def main():
                 logging.warning("Failed to read frame from camera; exiting.")
                 break
 
-            # Convert for prediction
-            pil_img = cv2_to_pil(frame)
-            detections = predictor.predict(
-                pil_img,
+            # Perform prediction
+            result = predictor.predict(
+                cv2_to_pil(frame),
                 tree=tree,
                 clip_text_encodings=clip_encodings,
                 owl_text_encodings=owl_encodings
             )
 
-            print(detections)
+            # Collect all detections
+            all_detections = list(result.detections.values())
 
-            # Filter for persons
-            persons = [d for d in detections if d.get('label', '').lower() == 'person']
-            if persons and (time.time() - last_notification) > args.notify_interval:
-                # Draw bounding boxes for all detections
-                annotated = draw_tree_output(frame.copy(), detections, tree)
+            # If any person detected and interval elapsed
+            if all_detections and (time.time() - last_notification) > args.notify_interval:
+                # Draw bounding boxes for detections
+                annotated = draw_tree_output(frame.copy(), result, tree)
                 success, buf = cv2.imencode(
                     '.jpg', annotated,
                     [cv2.IMWRITE_JPEG_QUALITY, args.image_quality]
@@ -138,7 +134,6 @@ def main():
     finally:
         camera.release()
         cv2.destroyAllWindows()
-
 
 if __name__ == '__main__':
     main()
