@@ -84,7 +84,7 @@ def main():
     )
 
     # Prepare a single "person" prompt for continuous detection
-    tree = Tree.from_prompt("[person]")
+    tree = Tree.from_prompt("[a face]")
     clip_encodings = predictor.encode_clip_text(tree)
     owl_encodings = predictor.encode_owl_text(tree)
 
