@@ -59,7 +59,7 @@ def main():
         help="JPEG quality for sent images (0-100, default: 50)"
     )
     parser.add_argument(
-        "--notify_interval", type=int, default=60,
+        "--notify_interval", type=int, default=15,
         help="Minimum seconds between successive Discord alerts (default: 60s)"
     )
     parser.add_argument(
@@ -84,7 +84,7 @@ def main():
     )
 
     # Prepare a single "person" prompt for continuous detection
-    tree = Tree.from_prompt("person")
+    tree = Tree.from_prompt("[person]")
     clip_encodings = predictor.encode_clip_text(tree)
     owl_encodings = predictor.encode_owl_text(tree)
 
