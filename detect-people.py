@@ -18,7 +18,6 @@ THRESHOLD = 0.2  # adjust as needed
 # 🧠 NanoOWL setup
 predictor = TreePredictor(
     owl_predictor=OwlPredictor(
-        model_id="google/owlvit-base-patch32",
         image_encoder_engine="../data/owl_image_encoder_patch32.engine"
     )
 )
