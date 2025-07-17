@@ -103,10 +103,10 @@ def main():
                 owl_text_encodings=owl_encodings
             )
 
-            # Collect all detections
-            all_detections = list(result.detections.values())
+            # Collect all detections (result.detections is already a dict_values of TreeDetection)
+            all_detections = list(result.detections)
 
-            # If any person detected and interval elapsed
+            # If any detection and interval elapsed, notify
             if all_detections and (time.time() - last_notification) > args.notify_interval:
                 # Draw bounding boxes for detections
                 annotated = draw_tree_output(frame.copy(), result, tree)
