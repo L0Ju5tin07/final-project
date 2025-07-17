@@ -1,69 +1,68 @@
-Jetson NanoOWL Person Detector with Discord Alerts
+# Jetson NanoOWL Person Detector with Discord Alerts
 
-Overview
+## Overview
 
 This script leverages NanoOWL on a Jetson Nano/Orin to perform continuous, real-time person detection via a connected camera. When a person is detected with confidence above a configurable threshold, the script:
 
-Draws bounding boxes around detected persons.
+1. Draws bounding boxes around detected persons.
+2. Sends an image alert to a specified Discord webhook (once per notification interval).
+3. (Optionally) Displays the live annotated video on a local GUI window.
 
-Sends an image alert to a specified Discord webhook (once per notification interval).
+## Features
 
-(Optionally) Displays the live annotated video on a local GUI window.
+* **Continuous Operation**: Runs until manually stopped (Ctrl+C or pressing `q` in display mode).
+* **Configurable Threshold**: Only notifies if detection confidence ≥ `--score_threshold`.
+* **Cooldown Interval**: Avoids spamming Discord by waiting `--notify_interval` seconds between alerts.
+* **Flexible Output**: Optional GUI display via `--display` or headless operation.
 
-Features
+## Prerequisites
 
-Continuous Operation: Runs until manually stopped (Ctrl+C or pressing q in display mode).
+* **Hardware**: NVIDIA Jetson Nano or Orin with a USB or CSI camera attached.
+* **OS**: Linux (Ubuntu 18.04 or later recommended).
+* **CUDA**: JetPack with TensorRT support for optimized inference.
 
-Configurable Threshold: Only notifies if detection confidence ≥ --score_threshold.
+## Software Dependencies
 
-Cooldown Interval: Avoids spamming Discord by waiting --notify_interval seconds between alerts.
+Install the following Python packages (preferably in a `venv`):
 
-Flexible Output: Optional GUI display via --display or headless operation.
-
-Prerequisites
-
-Hardware: NVIDIA Jetson Nano or Orin with a USB or CSI camera attached.
-
-OS: Linux (Ubuntu 18.04 or later recommended).
-
-CUDA: JetPack with TensorRT support for optimized inference.
-
-Software Dependencies
-
-Install the following Python packages (preferably in a venv):
-
+```
 pip3 install nanoowl torch torchvision
 pip3 install opencv-python pillow requests
+```
 
-Ensure you have your trained or downloaded NanoOWL engine file (e.g., owl_image_encoder.engine) accessible.
+Ensure you have your trained or downloaded NanoOWL engine file (e.g., `owl_image_encoder.engine`) accessible.
 
-Setup Instructions
+## Setup Instructions
 
-Clone this repository to your Jetson device:
+1. **Clone this repository** to your Jetson device:
 
-git clone <your-repo-url>
-cd final-project
+   ```bash
+   git clone <your-repo-url>
+   cd final-project
+   ```
 
-Prepare your model engine (TensorRT or ONNX):
+2. **Prepare your model engine** (TensorRT or ONNX):
 
-Place the .engine or .onnx file in the project folder or note its path.
+   * Place the `.engine` or `.onnx` file in the project folder or note its path.
 
-Obtain a Discord Webhook URL:
+3. **Obtain a Discord Webhook URL**:
 
-In your Discord server, go to Server Settings → Integrations → Webhooks → New Webhook.
+   * In your Discord server, go to **Server Settings → Integrations → Webhooks → New Webhook**.
+   * Copy the webhook URL for use in the next step.
 
-Copy the webhook URL for use in the next step.
+4. **Install Python dependencies**:
 
-Install Python dependencies:
+   ```bash
+   pip3 install -r requirements.txt
+   ```
 
-pip3 install -r requirements.txt
+   (Or install packages individually as above.)
 
-(Or install packages individually as above.)
-
-Usage
+## Usage
 
 Run the detector script with:
 
+```bash
 python3 detect-people.py /path/to/owl_image_encoder.engine \
   --discord_webhook_url YOUR_WEBHOOK_URL \
   [--camera 0] \
@@ -72,54 +71,46 @@ python3 detect-people.py /path/to/owl_image_encoder.engine \
   [--score_threshold 0.0-1.0] \
   [--notify_interval seconds] \
   [--display]
+```
 
-/path/to/owl_image_encoder.engine: Path to your NanoOWL engine file.
+* **`/path/to/owl_image_encoder.engine`**: Path to your NanoOWL engine file.
+* **`--discord_webhook_url`**: (Required) Your Discord webhook endpoint.
+* **`--camera`**: (Default `0`) Device index of your camera.
+* **`--resolution`**: (Default `640x480`) Capture size, e.g., `1280x720`.
+* **`--image_quality`**: (Default `50`) JPEG quality for the sent snapshot.
+* **`--score_threshold`**: (Default `0.5`) Minimum detection confidence for alerts.
+* **`--notify_interval`**: (Default `60`) Seconds to wait between notifications.
+* **`--display`**: (Flag) Enable GUI window (requires X11/Wayland).
 
---discord_webhook_url: (Required) Your Discord webhook endpoint.
+## Example
 
---camera: (Default 0) Device index of your camera.
-
---resolution: (Default 640x480) Capture size, e.g., 1280x720.
-
---image_quality: (Default 50) JPEG quality for the sent snapshot.
-
---score_threshold: (Default 0.5) Minimum detection confidence for alerts.
-
---notify_interval: (Default 60) Seconds to wait between notifications.
-
---display: (Flag) Enable GUI window (requires X11/Wayland).
-
-Example
-
+```bash
 python3 detect-people.py owl_image_encoder_patch32.engine \
   --discord_webhook_url https://discord.com/api/webhooks/... \
   --resolution 1280x720 \
   --score_threshold 0.75 \
   --notify_interval 30 \
   --display
+```
 
 This will run detection at 1280×720, notify only if confidence ≥ 75%, send alerts at most every 30 s, and show the GUI window.
 
-Stopping
+## Stopping
 
-To exit headless mode: Press Ctrl+C in the terminal.
+* To **exit** headless mode: Press **Ctrl+C** in the terminal.
+* To **exit** GUI mode: Click the window and press **q**.
 
-To exit GUI mode: Click the window and press q.
+## Customization
 
-Customization
+* Modify `TREE.from_prompt("person")` in the code to detect other objects (e.g., "car", "cat").
+* Tweak the confidence threshold and interval to suit your environment.
 
-Modify TREE.from_prompt("person") in the code to detect other objects (e.g., "car", "cat").
+## Troubleshooting
 
-Tweak the confidence threshold and interval to suit your environment.
+* **No detections**: Lower `--score_threshold` or test with a clear view of a person.
+* **Display errors**: Remove `--display` in headless (non-GUI) setups.
+* **Slow performance**: Use a lower resolution or optimize your TensorRT engine.
 
-Troubleshooting
+## License
 
-No detections: Lower --score_threshold or test with a clear view of a person.
-
-Display errors: Remove --display in headless (non-GUI) setups.
-
-Slow performance: Use a lower resolution or optimize your TensorRT engine.
-
-License
-
-Apache License 2.0 (see header in detect-people.py)
+Apache License 2.0 (see header in `detect-people.py`)
