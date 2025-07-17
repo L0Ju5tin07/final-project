@@ -107,12 +107,17 @@ def main():
                 owl_text_encodings=owl_encodings
             )
 
-            # Collect all detections
-            all_detections = list(result.detections)
+            # Extract detections
+            detections = list(result.detections)
 
-            # If detection and cooldown passed, send alert
-            if all_detections and (time.time() - last_notification) > args.notify_interval:
+            # Always draw bounding boxes if any detection
+            if detections:
                 annotated = draw_tree_output(frame.copy(), result, tree)
+            else:
+                annotated = frame
+
+            # Send Discord alert if cooldown passed
+            if detections and (time.time() - last_notification) > args.notify_interval:
                 success, buf = cv2.imencode(
                     '.jpg', annotated,
                     [cv2.IMWRITE_JPEG_QUALITY, args.image_quality]
@@ -122,8 +127,6 @@ def main():
                     last_notification = time.time()
                 else:
                     logging.error("Failed to JPEG-encode annotated image.")
-            else:
-                annotated = frame
 
             # Local display if requested
             if args.display:
