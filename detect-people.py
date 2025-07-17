@@ -62,6 +62,10 @@ def main():
         "--notify_interval", type=int, default=60,
         help="Minimum seconds between successive Discord alerts (default: 60s)"
     )
+    parser.add_argument(
+        "--display", action="store_true", default=False,
+        help="Enable local display of detection window (requires GUI)"
+    )
     args = parser.parse_args()
 
     # Parse resolution
@@ -103,12 +107,11 @@ def main():
                 owl_text_encodings=owl_encodings
             )
 
-            # Collect all detections (result.detections is already a dict_values of TreeDetection)
+            # Collect all detections
             all_detections = list(result.detections)
 
-            # If any detection and interval elapsed, notify
+            # If detection and cooldown passed, send alert
             if all_detections and (time.time() - last_notification) > args.notify_interval:
-                # Draw bounding boxes for detections
                 annotated = draw_tree_output(frame.copy(), result, tree)
                 success, buf = cv2.imencode(
                     '.jpg', annotated,
@@ -122,18 +125,24 @@ def main():
             else:
                 annotated = frame
 
-            # Optional: display locally; quit on 'q'
-            cv2.imshow("Person Detection", annotated)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                logging.info("User requested exit.")
-                break
+            # Local display if requested
+            if args.display:
+                try:
+                    cv2.imshow("Person Detection", annotated)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        logging.info("User requested exit via window.")
+                        break
+                except cv2.error as e:
+                    logging.error(f"Display error: {e}")
+                    break
 
     except KeyboardInterrupt:
         logging.info("Interrupted by user; shutting down.")
 
     finally:
         camera.release()
-        cv2.destroyAllWindows()
+        if args.display:
+            cv2.destroyAllWindows()
 
 if __name__ == '__main__':
     main()
