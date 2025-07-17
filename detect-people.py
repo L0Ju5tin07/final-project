@@ -1,183 +1,142 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION &
-# AFFILIATES. All rights reserved.
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import asyncio
 import argparse
 import logging
-import weakref
 import time
-import json
-
-from aiohttp import web, WSCloseCode, ClientSession, FormData
 import cv2
-import PIL.Image
-import matplotlib.pyplot as plt
+from PIL import Image
+import requests
 
 from nanoowl.tree import Tree
 from nanoowl.tree_predictor import TreePredictor
-from nanoowl.tree_drawing import draw_tree_output
 from nanoowl.owl_predictor import OwlPredictor
+from nanoowl.tree_drawing import draw_tree_output
 
-# --------------------
-# Helper: send Discord alert
-# --------------------
-async def send_discord_alert(webhook_url: str, image_bytes: bytes, content: str):
+
+def cv2_to_pil(image):
     """
-    Posts a message with an image to the given Discord webhook URL.
+    Convert an OpenCV BGR image to a PIL Image in RGB format.
     """
-    form = FormData()
-    # message payload
-    payload = {"content": content}
-    form.add_field('payload_json', json.dumps(payload), content_type='application/json')
-    form.add_field('file', image_bytes, filename='capture.jpg', content_type='image/jpeg')
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(rgb)
 
-    async with ClientSession() as session:
-        async with session.post(webhook_url, data=form) as resp:
-            logging.info(f"Discord webhook responded with status: {resp.status}")
 
-# --------------------
-# Main
-# --------------------
-if __name__ == "__main__":
-    # --- CLI arguments ---
-    parser = argparse.ArgumentParser()
-    parser.add_argument("image_encode_engine", type=str,
-                        help="Name/path of the image encoder engine (e.g., ONNX or TensorRT file)")
-    parser.add_argument("--discord_webhook_url", type=str, required=True,
-                        help="Discord webhook URL for alerts when people are detected")
-    parser.add_argument("--image_quality", type=int, default=50,
-                        help="JPEG quality for streamed frames (0–100)")
-    parser.add_argument("--port", type=int, default=7860,
-                        help="Port to serve the web app on")
-    parser.add_argument("--host", type=str, default="0.0.0.0",
-                        help="Host/interface to bind the server")
-    parser.add_argument("--camera", type=int, default=0,
-                        help="OpenCV camera device index")
-    parser.add_argument("--resolution", type=str, default="640x480",
-                        help="Camera resolution WIDTHxHEIGHT")
+def notify_discord(webhook_url: str, image_bytes: bytes):
+    """
+    Send a notification to the given Discord webhook URL with an image attachment.
+    """
+    data = {"content": "🚨 Person detected! 📷"}
+    files = {"file": ("detection.jpg", image_bytes, "image/jpeg")}
+    try:
+        resp = requests.post(webhook_url, data=data, files=files)
+        resp.raise_for_status()
+        logging.info("Discord notification sent successfully.")
+    except Exception as e:
+        logging.error(f"Failed to send Discord notification: {e}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Jetson Nano/Orin live person detector with Discord alerts"
+    )
+    parser.add_argument(
+        "image_encode_engine", type=str,
+        help="Path or name of the ONNX/TensorRT engine for image encoding"
+    )
+    parser.add_argument(
+        "--discord_webhook_url", type=str, required=True,
+        help="Discord webhook URL to send alerts to"
+    )
+    parser.add_argument(
+        "--camera", type=int, default=0,
+        help="OpenCV camera device index (default: 0)"
+    )
+    parser.add_argument(
+        "--resolution", type=str, default="640x480",
+        help="Camera resolution WIDTHxHEIGHT (default: 640x480)"
+    )
+    parser.add_argument(
+        "--image_quality", type=int, default=50,
+        help="JPEG quality for sent images (0-100, default: 50)"
+    )
+    parser.add_argument(
+        "--notify_interval", type=int, default=60,
+        help="Minimum seconds between successive Discord alerts (default: 60s)"
+    )
     args = parser.parse_args()
 
-    WIDTH, HEIGHT = map(int, args.resolution.split("x"))
-    CAMERA_DEVICE = args.camera
-    IMAGE_QUALITY = args.image_quality
-    DISCORD_WEBHOOK_URL = args.discord_webhook_url
+    # Parse resolution
+    width, height = map(int, args.resolution.split('x'))
 
-    # --- Predictor setup ---
+    logging.basicConfig(level=logging.INFO)
+    logging.info("Initializing predictor and person prompt...")
+
+    # Initialize the model pipeline
     predictor = TreePredictor(
-        owl_predictor=OwlPredictor(
-            image_encoder_engine=args.image_encode_engine
-        )
+        owl_predictor=OwlPredictor(image_encoder_engine=args.image_encode_engine)
     )
-    prompt_data = None
 
-    # --- Utility functions ---
-    def cv2_to_pil(image):
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        return PIL.Image.fromarray(image)
+    # Prepare a single "person" prompt for continuous detection
+    tree = Tree.from_prompt("person")
+    clip_encodings = predictor.encode_clip_text(tree)
+    owl_encodings = predictor.encode_owl_text(tree)
 
-    # --- HTTP handlers ---
-    async def handle_index_get(request: web.Request):
-        return web.FileResponse("./index.html")
+    # Open camera
+    logging.info(f"Opening camera device {args.camera} at {width}x{height}...")
+    camera = cv2.VideoCapture(args.camera)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
-    async def websocket_handler(request):
-        nonlocal prompt_data
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
-        request.app['websockets'].add(ws)
+    last_notification = 0.0
 
-        try:
-            async for msg in ws:
-                if msg.type == web.WSMsgType.TEXT and msg.data.startswith("prompt:"):
-                    _, prompt = msg.data.split(":", 1)
-                    tree = Tree.from_prompt(prompt)
-                    clip_enc = predictor.encode_clip_text(tree)
-                    owl_enc = predictor.encode_owl_text(tree)
-                    prompt_data = {"tree": tree,
-                                   "clip_encodings": clip_enc,
-                                   "owl_encodings": owl_enc}
-                    logging.info(f"Prompt set: {prompt}")
-        finally:
-            request.app['websockets'].discard(ws)
-        return ws
-
-    async def on_shutdown(app: web.Application):
-        for ws in set(app['websockets']):
-            await ws.close(code=WSCloseCode.GOING_AWAY,
-                           message='Server shutdown')
-
-    # --- Detection loop ---
-    async def detection_loop(app: web.Application):
-        loop = asyncio.get_running_loop()
-        camera = cv2.VideoCapture(CAMERA_DEVICE)
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, WIDTH)
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, HEIGHT)
-
-        last_alert_time = 0
-        ALERT_COOLDOWN = 30.0  # seconds between alerts
-
-        def _read_and_encode():
-            ok, frame = camera.read()
-            if not ok:
-                return ok, None, []
-
-            image_pil = cv2_to_pil(frame)
-            detections = []
-
-            if prompt_data is not None:
-                detections = predictor.predict(
-                    image_pil,
-                    tree=prompt_data['tree'],
-                    clip_text_encodings=prompt_data['clip_encodings'],
-                    owl_text_encodings=prompt_data['owl_encodings']
-                )
-                frame = draw_tree_output(frame, detections, prompt_data['tree'])
-
-            # encode to JPEG
-            jpeg = cv2.imencode('.jpg', frame,
-                                 [cv2.IMWRITE_JPEG_QUALITY, IMAGE_QUALITY])[1]
-            return ok, bytes(jpeg), detections
-
+    try:
         while True:
-            ok, jpeg_bytes, detections = await loop.run_in_executor(None, _read_and_encode)
-            if not ok:
+            ret, frame = camera.read()
+            if not ret:
+                logging.warning("Failed to read frame from camera; exiting.")
                 break
 
-            # Check for any person detections
-            now = time.time()
-            if DISCORD_WEBHOOK_URL and any(d.label.lower() == 'person' for d in detections):
-                if now - last_alert_time > ALERT_COOLDOWN:
-                    last_alert_time = now
-                    # create an async task so notification does not block streaming
-                    asyncio.create_task(
-                        send_discord_alert(
-                            DISCORD_WEBHOOK_URL,
-                            jpeg_bytes,
-                            "@here Person detected!"
-                        )
-                    )
+            # Convert for prediction
+            pil_img = cv2_to_pil(frame)
+            detections = predictor.predict(
+                pil_img,
+                tree=tree,
+                clip_text_encodings=clip_encodings,
+                owl_text_encodings=owl_encodings
+            )
 
-            # Broadcast frame to clients
-            for ws in app['websockets']:
-                await ws.send_bytes(jpeg_bytes)
+            # Filter for persons
+            persons = [d for d in detections if d.get('label', '').lower() == 'person']
+            if persons and (time.time() - last_notification) > args.notify_interval:
+                # Draw bounding boxes for all detections
+                annotated = draw_tree_output(frame.copy(), detections, tree)
+                success, buf = cv2.imencode(
+                    '.jpg', annotated,
+                    [cv2.IMWRITE_JPEG_QUALITY, args.image_quality]
+                )
+                if success:
+                    notify_discord(args.discord_webhook_url, buf.tobytes())
+                    last_notification = time.time()
+                else:
+                    logging.error("Failed to JPEG-encode annotated image.")
+            else:
+                annotated = frame
 
+            # Optional: display locally; quit on 'q'
+            cv2.imshow("Person Detection", annotated)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                logging.info("User requested exit.")
+                break
+
+    except KeyboardInterrupt:
+        logging.info("Interrupted by user; shutting down.")
+
+    finally:
         camera.release()
+        cv2.destroyAllWindows()
 
-    async def run_detection_loop(app: web.Application):
-        task = asyncio.create_task(detection_loop(app))
-        yield
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
 
-    # --- App setup & run ---
-    logging.basicConfig(level=logging.INFO)
-    app = web.Application()
-    app['websockets'] = weakref.WeakSet()
-    app.router.add_get('/', handle_index_get)
-    app.router.add_route('GET', '/ws', websocket_handler)
-    app.on_shutdown.append(on_shutdown)
-    app.cleanup_ctx.append(run_detection_loop)
-    web.run_app(app, host=args.host, port=args.port)
+if __name__ == '__main__':
+    main()
