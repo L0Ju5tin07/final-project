@@ -25,7 +25,7 @@ def notify_discord(webhook_url: str, image_bytes: bytes):
     """
     Send a notification to the given Discord webhook URL with an image attachment.
     """
-    data = {"content": "🚨 Person detected! 📷"}
+    data = {"content": "🚨 Camera update! 📷"}
     files = {"file": ("detection.jpg", image_bytes, "image/jpeg")}
     try:
         resp = requests.post(webhook_url, data=data, files=files)
