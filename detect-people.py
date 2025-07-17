@@ -63,6 +63,10 @@ def main():
         help="Minimum seconds between successive Discord alerts (default: 60s)"
     )
     parser.add_argument(
+        "--score_threshold", type=float, default=0.5,
+        help="Confidence threshold (0-1) to consider a detection valid for notification"
+    )
+    parser.add_argument(
         "--display", action="store_true", default=False,
         help="Enable local display of detection window (requires GUI)"
     )
@@ -107,17 +111,19 @@ def main():
                 owl_text_encodings=owl_encodings
             )
 
-            # Extract detections
-            detections = list(result.detections)
+            # Extract detections and filter by confidence
+            all_detections = list(result.detections)
+            valid_detections = [d for d in all_detections if d.scores[0] >= args.score_threshold]
 
-            # Always draw bounding boxes if any detection
-            if detections:
+            # Draw bounding boxes if any valid detection
+            if valid_detections:
+                # Note: draw_tree_output will draw all detections; false positives filtered by score
                 annotated = draw_tree_output(frame.copy(), result, tree)
             else:
                 annotated = frame
 
-            # Send Discord alert if cooldown passed
-            if detections and (time.time() - last_notification) > args.notify_interval:
+            # Send Discord alert if there are valid detections and cooldown passed
+            if valid_detections and (time.time() - last_notification) > args.notify_interval:
                 success, buf = cv2.imencode(
                     '.jpg', annotated,
                     [cv2.IMWRITE_JPEG_QUALITY, args.image_quality]
