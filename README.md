@@ -1,4 +1,7 @@
 # Jetson NanoOWL Person Detector with Discord Alerts
+![Jetson Powered](https://img.shields.io/badge/Jetson-Orin%20Nano-blue?logo=nvidia&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python&logoColor=white)
+[Link to demo]https://youtu.be/042-LH_Pyd8 
 
 ## Overview
 
